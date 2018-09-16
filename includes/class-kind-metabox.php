@@ -15,6 +15,17 @@ class Kind_Metabox {
 		add_action( 'save_post', array( 'Kind_Metabox', 'save_post' ), 8, 2 );
 		add_action( 'transition_post_status', array( 'Kind_Metabox', 'transition_post_status' ), 5, 3 );
 		add_filter( 'wp_insert_post_empty_content', array( 'Kind_Metabox', 'wp_insert_post_empty_content' ), 11, 2 );
+		add_action( 'change_kind', array( 'Kind_Metabox', 'change_kind' ), 10, 3 );
+	}
+
+	public static function change_kind( $post_id, $old_kind, $new_kind ) {
+		$mf2_post = new MF2_Post( $post_id );
+		$old_prop = Kind_Taxonomy::get_kind_info( $old_kind, 'property' );
+		$new_prop = Kind_Taxonomy::get_kind_info( $new_kind, 'property' );
+		if ( $mf2_post->has_key( $old_prop ) && ! $mf2_post->has_key( $new_prop ) ) {
+			$mf2_post->set( $new_prop, $mf2_post->get( $old_prop ) );
+		}
+		$mf2_post->delete( $old_prop );
 	}
 
 	public static function wp_insert_post_empty_content( $maybe_empty, $postarr ) {
@@ -66,30 +77,34 @@ class Kind_Metabox {
 				'jquery-ui-timepicker',
 				plugins_url( 'node_modules/timepicker/jquery.timepicker.min.js', dirname( __FILE__ ) ),
 				array( 'jquery' ),
-				self::$version
+				self::$version,
+				true
 			);
 
 			wp_enqueue_script(
 				'jquery-datepair',
 				plugins_url( 'node_modules/datepair.js/dist/jquery.datepair.min.js', dirname( __FILE__ ) ),
 				array( 'jquery' ),
-				self::$version
+				self::$version,
+				true
 			);
 
 			wp_enqueue_script(
 				'kindmeta',
 				plugins_url( 'js/kind.js', dirname( __FILE__ ) ),
 				array( 'jquery' ),
-				self::$version
+				self::$version,
+				true
 			);
 
 			// Provide a global object to our JS file containing our REST API endpoint, and API nonce
 			// Nonce must be 'wp_rest'
 			wp_localize_script(
-				'kindmeta', 'PKAPI',
+				'kindmeta',
+				'PKAPI',
 				array(
 					'api_nonce'       => wp_create_nonce( 'wp_rest' ),
-					'api_url'         => rest_url( '/link-preview/1.0/' ),
+					'api_url'         => rest_url( '/parse-this/1.0/' ),
 					'success_message' => __( 'Your URL has been successfully retrieved and parsed', 'indieweb-post-kinds' ),
 					'clear_message'   => __( 'Are you sure you want to clear post properties?', 'indieweb-post-kinds' ),
 				)
@@ -99,7 +114,8 @@ class Kind_Metabox {
 				'moment',
 				plugins_url( 'node_modules/moment/min/moment.min.js', dirname( __FILE__ ) ),
 				array( 'jquery' ),
-				'2.20.1'
+				'2.20.1',
+				true
 			);
 		}
 	}
@@ -305,21 +321,23 @@ class Kind_Metabox {
 		$author['photo'] = self::explode( ifset( $_POST['cite_author_photo'] ) );
 		$author          = array_filter( $author );
 		$cite['author']  = $author;
-
+		$kind            = $mf2_post->get( 'kind', true );
+		$type            = Kind_Taxonomy::get_kind_info( $kind, 'property' );
 		// Make sure there is no overwrite of properties that might not be handled by the plugin
-		$fetch = $mf2_post->fetch();
+		$fetch = $mf2_post->fetch( $type );
 		if ( ! $fetch ) {
 			$fetch = array();
 		}
 		$cite = array_merge( $fetch, $cite );
 		$cite = array_filter( $cite );
 		// Temporary code which assumes everything except a checkin is a citation
-		if ( 'checkin' === $mf2_post->get( 'kind' ) ) {
-			$type = 'h-card';
+		if ( 'checkin' === $kind ) {
+			$cite['type'] = 'card';
 		} else {
-			$type = 'h-cite';
+			$cite['type'] = 'cite';
 		}
-		$mf2_post->set_by_kind( $cite, $type );
+		$cite = jf2_to_mf2( $cite );
+		$mf2_post->set( $type, $cite );
 	}
 
 	public static function transition_post_status( $new, $old, $post ) {

@@ -4,9 +4,7 @@
  *	The Goal of this Template is to be a general all-purpose model that will be replaced by customization in other templates
  */
 
-$mf2_post = new MF2_Post( get_the_ID() );
-$cite     = $mf2_post->fetch();
-$author   = array();
+$author = array();
 if ( isset( $cite['author'] ) ) {
 	$author = Kind_View::get_hcard( $cite['author'] );
 }
@@ -21,7 +19,6 @@ $duration  = $mf2_post->get( 'duration', true );
 if ( ! $duration ) {
 		$duration = calculate_duration( $mf2_post->get( 'dt-start' ), $mf2_post->get( 'dt-end' ) );
 }
-$kind = get_post_kind_slug( get_the_ID() );
 $rsvp = $mf2_post->get( 'rsvp', true );
 
 if ( ! $kind ) {
@@ -29,9 +26,8 @@ if ( ! $kind ) {
 }
 
 // Add in the appropriate type
-$type = Kind_Taxonomy::get_kind_info( $kind, 'property' );
 if ( ! empty( $type ) ) {
-	$type = 'p-' . $type;
+	$type = ( empty( $url ) ? 'p-' : 'u-' ) . $type;
 }
 ?>
 
