@@ -58,6 +58,12 @@ class Kind_View {
 				break;
 			}
 		}
+		$mf2_post = new MF2_Post( get_the_ID() );
+		$kind     = $mf2_post->get( 'kind', true );
+		$type     = Kind_Taxonomy::get_kind_info( $kind, 'property' );
+		$cite     = $mf2_post->fetch( $type );
+		$url      = null;
+		$embed    = null;
 		ob_start();
 		include $located;
 		$return = ob_get_contents();
@@ -80,7 +86,7 @@ class Kind_View {
 
 	// Echo the output of get_display
 	public static function display( $post_id = null ) {
-		echo self::get_display( $post_id );
+		echo self::get_display( $post_id ); // phpcs:ignore
 	}
 
 	public static function content_response( $content ) {
@@ -120,7 +126,10 @@ class Kind_View {
 		foreach ( $blacklist as $b ) {
 			unset( $jf2[ $b ] );
 		}
-		return array_merge( $feed_item, $jf2 );
+		if ( ! empty( $jf2 ) ) {
+			return array_merge( $feed_item, $jf2 );
+		}
+		return $feed_item;
 	}
 
 
@@ -300,6 +309,8 @@ class Kind_View {
 		}
 		if ( array_key_exists( 'name', $author ) && is_array( $author['name'] ) ) {
 			$author['name'] = $author['name'][0];
+		} else {
+			$author['name'] = __( 'an author', 'indieweb-post-kinds' );
 		}
 
 		// If no filter generated the card, generate the card.

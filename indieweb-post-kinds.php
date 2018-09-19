@@ -7,7 +7,7 @@
  * Plugin Name: Post Kinds
  * Plugin URI: https://wordpress.org/plugins/indieweb-post-kinds/
  * Description: Ever want to reply to someone else's post with a post on your own site? Or to "like" someone else's post, but with your own site?
- * Version: 3.0.9
+ * Version: 3.1.0
  * Author: David Shanske
  * Author URI: https://david.shanske.com
  * Text Domain: indieweb-post-kinds
@@ -24,9 +24,10 @@ add_action( 'plugins_loaded', array( 'Post_Kinds_Plugin', 'plugins_loaded' ) );
 add_action( 'init', array( 'Post_Kinds_Plugin', 'init' ) );
 
 class Post_Kinds_Plugin {
-	public static $version = '3.0.9';
+	public static $version = '3.1.0';
 	public static function init() {
 		// Add Kind Taxonomy.
+		require_once plugin_dir_path( __FILE__ ) . 'includes/class-post-kind.php';
 		require_once plugin_dir_path( __FILE__ ) . 'includes/class-kind-taxonomy.php';
 		Kind_Taxonomy::init();
 		Kind_Taxonomy::register();
@@ -63,25 +64,10 @@ class Post_Kinds_Plugin {
 		require_once plugin_dir_path( __FILE__ ) . 'includes/class-kind-view.php';
 		add_action( 'init', array( 'Kind_View', 'init' ) );
 
-		// Add Kind Meta Storage and Retrieval Functions.
-		require_once plugin_dir_path( __FILE__ ) . 'includes/class-kind-meta.php';
-		require_once plugin_dir_path( __FILE__ ) . 'includes/class-mf2-post.php';
-
 		require_once 'vendor/autoload.php';
 
-		require_once plugin_dir_path( __FILE__ ) . 'includes/class-parse-mf2.php';
-
-		// Add Link Preview Parsing
-		require_once plugin_dir_path( __FILE__ ) . 'includes/class-parse-this.php';
-		require_once plugin_dir_path( __FILE__ ) . 'includes/class-link-preview.php';
-
-		// Add Debugger
-		if ( WP_DEBUG ) {
-			require_once plugin_dir_path( __FILE__ ) . 'includes/class-mf2-debugger.php';
-			add_action( 'init', array( 'MF2_Debugger', 'init' ) );
-		}
-
-		add_action( 'init', array( 'Link_Preview', 'init' ) );
+		// Parse This
+		require_once plugin_dir_path( __FILE__ ) . 'parse-this/parse-this.php';
 
 		// Load stylesheets.
 		add_action( 'wp_enqueue_scripts', array( 'Post_Kinds_Plugin', 'style_load' ) );
@@ -124,7 +110,8 @@ class Post_Kinds_Plugin {
 			$content = __(
 				'For responses to URLs, such as responding to a post or article, this site allows the storage of data around the post/article in order to generate a rich
 				citation. Items such as author name and image, summary of the text, embed provided by third-party site, etc may be stored and are solely to provide this 
-				context. We will remove any of this on request.', 'indieweb-post-kinds'
+				context. We will remove any of this on request.',
+				'indieweb-post-kinds'
 			);
 			wp_add_privacy_policy_content(
 				'Post Kinds',
