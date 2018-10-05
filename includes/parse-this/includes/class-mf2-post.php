@@ -77,6 +77,18 @@ class MF2_Post {
 	}
 
 	private function get_post_kind() {
+		if ( is_attachment( $this->uid ) ) {
+			if ( wp_attachment_is( 'image', $this->uid ) ) {
+				return 'photo';
+			}
+			if ( wp_attachment_is( 'video', $this->uid ) ) {
+				return 'video';
+			}
+			if ( wp_attachment_is( 'audio', $this->uid ) ) {
+				return 'audio';
+			}
+			return null;
+		}
 		if ( function_exists( 'get_post_kind_slug' ) ) {
 			return get_post_kind_slug( $this->uid );
 		} else {
@@ -456,12 +468,8 @@ class MF2_Post {
 	}
 
 	public function get_attached_media( $type, $post ) {
-		$posts  = get_attached_media( $type, $post );
-		$return = array();
-		foreach ( $posts as $post ) {
-			$return[] = $post->post_ID;
-		}
-		return array_filter( $return );
+		$posts = get_attached_media( $type, $post );
+		return wp_list_pluck( $posts, 'post_ID' );
 	}
 
 	public function get_audios() {
@@ -499,9 +507,8 @@ class MF2_Post {
 		}
 		$post_content = ifset( $this->content['html'] );
 		if ( $post_content ) {
-			preg_match( '/id=[\'"]wp-image-([\d]*)[\'"]/i', $post_content, $att_ids );
-			// If the content_allow flag is true then return the ids else return false so that there will not be double images
-			if ( is_array( $att_ids ) && ! empty( $att_ids ) ) {
+			$att_ids = self::get_img_ids_from_content( $post_content );
+			if ( $att_ids ) {
 				return $content_allow ? $att_ids : array();
 			}
 			// Search the post's content for the <img /> tag and get its URL.
@@ -514,16 +521,17 @@ class MF2_Post {
 		// If there is a featured image return only that. Otherwise return all images
 		$featured = get_post_thumbnail_id( $this->uid );
 		if ( $featured ) {
-			return $featured;
+			return array( $featured );
 		}
 		$att_ids = $this->get_attached_media( 'image', $this->uid );
 		$photos  = $this->get( 'photo', false );
 		if ( is_array( $photos ) ) {
-			$newphotos = $this->sideload_images( $photos );
-			$diff      = array_diff( $photos, $newphotos );
-			if ( ! empty( $diff ) ) {
-				$this->set( 'photo' );
+			if ( ! wp_is_numeric_array( $photos ) ) {
+				$photos = array( $photos );
 			}
+
+			$photos = $this->sideload_images( $photos );
+			$this->set( 'photo', $photos );
 		}
 		$att_ids = array_merge( $att_ids, $this->get_attachments_from_urls( $photos ) );
 		if ( ! empty( $att_ids ) ) {
@@ -537,14 +545,62 @@ class MF2_Post {
 		require_once ABSPATH . 'wp-admin/includes/file.php';
 		require_once ABSPATH . 'wp-admin/includes/image.php';
 		foreach ( $photos as $key => $value ) {
-			if ( ! attachment_url_to_postid( $value ) ) {
-				$id = media_sideload_image( $value, $this->uid, null, 'id' );
-				if ( $id ) {
-					$photos[ $key ] = wp_get_attachment_url( $id );
+			if ( is_string( $value ) ) {
+				if ( ! wp_http_validate_url( $value ) ) {
+					continue;
+				} else {
+					if ( ! attachment_url_to_postid( $value ) ) {
+						$id = media_sideload_image( $value, $this->uid, null, 'id' );
+						if ( $id ) {
+							$photos[ $key ] = wp_get_attachment_url( $id );
+						}
+					}
 				}
+			}
+			// Attempt to normalize old data
+			if ( is_array( $value ) ) {
+				$value = mf2_to_jf2( $value );
+				$id    = attachment_url_to_postid( $value['url'] );
+				if ( ! $id ) {
+					$id = media_sideload_image( $value['url'], $this->uid, null, 'id' );
+					if ( $id ) {
+						$value['url'] = wp_get_attachment_url( $id );
+					}
+				}
+				$args = array(
+					'ID'           => $id,
+					'post_title'   => ifset( $value['name'] ),
+					'post_excerpt' => ifset( $value['summary'] ),
+				);
+				$args = array_filter( $args );
+				wp_update_post( $args );
+				unset( $value['name'] );
+				unset( $value['summary'] );
+				foreach ( $value as $k => $v ) {
+					update_post_meta( $id, 'mf2_' . $k, $v );
+				}
+				$photos[ $key ] = $value['url'];
 			}
 		}
 		return $photos;
+	}
+
+	public function get_img_ids_from_content( $content ) {
+		$content = wp_unslash( $content );
+		$return  = array();
+		$doc     = new DOMDocument();
+		$doc->loadHTML( $content );
+		$images = $doc->getElementsByTagName( 'img' );
+		foreach ( $images as $image ) {
+			$classes = $image->getAttribute( 'class' );
+			$classes = explode( ' ', $classes );
+			foreach ( $classes as $class ) {
+				if ( 0 === strpos( $class, 'wp-image-' ) ) {
+					$return[] = (int) str_replace( 'wp-image-', '', $class );
+				}
+			}
+		}
+		return $return;
 	}
 
 	public function get_img_urls_from_content( $content ) {
@@ -571,7 +627,13 @@ class MF2_Post {
 		$att_ids = array();
 		if ( wp_is_numeric_array( $urls ) ) {
 			foreach ( $urls as $url ) {
-				$att_ids[] = attachment_url_to_postid( $url );
+				if ( is_array( $url ) ) {
+					if ( isset( $url['url'] ) ) {
+						$att_ids[] = attachment_url_to_postid( $url['url'] );
+					}
+				} else {
+					$att_ids[] = attachment_url_to_postid( $url );
+				}
 			}
 		}
 		return array_filter( array_unique( $att_ids ) );

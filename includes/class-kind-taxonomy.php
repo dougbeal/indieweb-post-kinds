@@ -44,7 +44,24 @@ final class Kind_Taxonomy {
 
 		add_filter( 'the_title', array( 'Kind_Taxonomy', 'the_title' ), 9, 2 );
 
+		add_action( 'rest_api_init', array( 'Kind_Taxonomy', 'rest_kind' ) );
 	}
+
+	public static function rest_kind() {
+		register_rest_field(
+			'post',
+			'kind',
+			array(
+				'get_callback'    => array( 'Kind_Taxonomy', 'get_post_kind_slug' ),
+				'update_callback' => array( 'Kind_Taxonomy', 'set_rest_post_kind' ),
+				'schema'          => array(
+					'kind' => __( 'Post Kind', 'indieweb-post-kinds' ),
+					'type' => 'string',
+				),
+			)
+		);
+	}
+
 
 	public static function the_title( $title, $post_id ) {
 		if ( ! $title && is_admin() ) {
@@ -929,6 +946,9 @@ final class Kind_Taxonomy {
 	}
 
 	public static function get_post_kind_slug( $post = null ) {
+		if ( is_array( $post ) && isset( $post['id'] ) ) {
+			$post = $post['id'];
+		}
 		$post = get_post( $post );
 		if ( ! $post ) {
 			return false; }
@@ -984,6 +1004,12 @@ final class Kind_Taxonomy {
 			return new WP_Error( 'invalid_kind', __( 'Invalid Kind', 'indieweb-post-kinds' ) );
 		}
 		return wp_set_post_terms( $post->ID, $kind, 'kind' );
+	}
+
+	public static function set_rest_post_kind( $kind, $post_array ) {
+		if ( isset( $post_array['id'] ) ) {
+			self::set_post_kind( $post_array['id'], $kind );
+		}
 	}
 
 	public static function before_kind() {
