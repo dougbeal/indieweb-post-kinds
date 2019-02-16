@@ -885,7 +885,7 @@ final class Kind_Taxonomy {
 				'description'     => __( 'An event is a type of post that in addition to a post name (event title) has a start datetime (likely end datetime), and a location.', 'indieweb-post-kinds' ),
 				'description-url' => 'https://indieweb.org/event',
 				'title'           => true, // Should this kind have an explicit title
-				'show'            => false, // Show in Settings
+				'show'            => true, // Show in Settings
 			)
 		);
 		register_post_kind(
