@@ -1,10 +1,10 @@
 === Post Kinds ===
 Contributors: dshanske
 Tags: indieweb, interaction, posts, webmention, share, like, scrobble
-Stable tag: 3.1.8
+Stable tag: 3.2.1
 Requires at least: 4.9.6
 Requires PHP: 5.4
-Tested up to: 5.0.3
+Tested up to: 5.1
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -254,6 +254,15 @@ through future plugin updates.
 
 
 == Changelog ==
+
+= 3.2.1 ( 2019-03-10 ) =
+* Revert load change
+
+= 3.2.0 ( 2019-03-10 ) =
+* Switch from SVG Sprites to inline SVG
+* Adjust storage locations for included libraries
+* Refreshed version of Parse This that improves post type discovery for Micropub and parses more properties
+* Add basic template to display events and itineraries from Quill
 
 = 3.1.8 ( 2019-01-12 ) =
 * Fix issue with Micropub posting caused by this plugin
