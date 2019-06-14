@@ -23,6 +23,10 @@ final class Kind_Taxonomy {
 		add_filter( 'post_link', array( 'Kind_Taxonomy', 'kind_permalink' ), 10, 3 );
 		add_filter( 'post_type_link', array( 'Kind_Taxonomy', 'kind_permalink' ), 10, 3 );
 
+		// Query Variable to Exclude Kinds from Feed
+		add_filter( 'query_vars', array( 'Kind_Taxonomy', 'query_vars' ) );
+		add_action( 'pre_get_posts', array( 'Kind_Taxonomy', 'kind_filter_query' ) );
+
 		// Add Dropdown
 		add_action( 'restrict_manage_posts', array( 'Kind_Taxonomy', 'kind_dropdown' ), 10, 2 );
 
@@ -44,11 +48,43 @@ final class Kind_Taxonomy {
 		add_action( 'set_object_terms', array( 'Kind_Taxonomy', 'set_object_terms' ), 10, 6 );
 
 		add_filter( 'the_title', array( 'Kind_Taxonomy', 'the_title' ), 9, 2 );
-		add_filter( 'get_sample_permalink', array( 'Kind_Taxonomy', 'get_sample_permalink' ), 10, 5 );
+		add_filter( 'get_sample_permalink', array( 'Kind_Taxonomy', 'get_sample_permalink' ), 12, 5 );
 
 		add_action( 'rest_api_init', array( 'Kind_Taxonomy', 'rest_kind' ) );
 
 		add_filter( 'embed_template_hierarchy', array( 'Kind_Taxonomy', 'embed_template_hierarchy' ) );
+	}
+
+	public static function query_vars( $qvars ) {
+		$qvars[] = 'exclude_kind';
+		return $qvars;
+	}
+
+	public static function kind_filter_query( $query ) {
+		// check if the user is requesting an admin page
+		if ( is_admin() ) {
+			return;
+		}
+		$exclude = get_query_var( 'exclude_kind' );
+		// Return if both are not set
+		if ( ! $exclude ) {
+			return;
+		}
+		$operator = 'NOT IN';
+		$filter   = $exclude;
+		$filter   = explode( ',', $filter );
+		$query->set(
+			'tax_query',
+			array(
+				array(
+					'taxonomy' => 'kind',
+					'field'    => 'slug',
+					'terms'    => $filter,
+					'operator' => $operator,
+				),
+			)
+		);
+
 	}
 
 	public static function rest_kind() {
@@ -78,12 +114,13 @@ final class Kind_Taxonomy {
 	}
 
 	public static function get_sample_permalink( $permalink, $post_id, $title, $name, $post ) {
-		if ( ! $title && 'publish' !== $post->post_status ) {
-			$excerpt = self::get_excerpt( $post );
-			$excerpt = sanitize_title( mb_strimwidth( wp_strip_all_tags( $excerpt ), 0, 40 ) ); // phpcs:ignore
-			if ( ! empty( $excerpt ) ) {
-				$permalink[1] = wp_unique_post_slug( $excerpt, $post_id, $post->post_status, $post->post_type, $post->post_parent );
-			}
+		if ( 'publish' === $post->post_status || ! empty( $post->post_title ) ) {
+			return $permalink;
+		}
+		$excerpt = self::get_excerpt( $post );
+		$excerpt = sanitize_title( mb_strimwidth( wp_strip_all_tags( $excerpt ), 0, 40 ) ); // phpcs:ignore
+		if ( ! empty( $excerpt ) ) {
+			$permalink[1] = wp_unique_post_slug( $excerpt, $post_id, $post->post_status, $post->post_type, $post->post_parent );
 		}
 		return $permalink;
 	}
@@ -186,26 +223,44 @@ final class Kind_Taxonomy {
 			'query_var'          => true,
 		);
 		register_taxonomy( 'kind', array( 'post' ), $args );
+		// Year archive for kinds
 		add_rewrite_rule(
 			'kind/([a-z]+)/([0-9]{4})/?$',
 			'index.php?year=$matches[2]&kind=$matches[1]',
 			'top'
 		);
+		// Tag Archive for Kinds
 		add_rewrite_rule(
-			'kind/([a-z]+)/tag/([a-z]+)/?$',
+			'kind/([a-z]+)/tag/([a-zA-Z0-9]+)/?$',
 			'index.php?tag=$matches[2]&kind=$matches[1]',
 			'top'
 		);
+		// Year and Month Archive for Kind
 		add_rewrite_rule(
 			'kind/([a-z]+)/([0-9]{4})/([0-9]{2})/?$',
 			'index.php?year=$matches[2]&monthnum=$matches[3]&kind=$matches[1]',
 			'top'
 		);
+		// Year Month and Day Archive for Kind
 		add_rewrite_rule(
 			'kind/([a-z]+)/([0-9]{4})/([0-9]{2})/([0-9]{2})/?$',
 			'index.php?year=$matches[2]&monthnum=$matches[3]&day=$matches[4]&kind=$matches[1]',
 			'top'
 		);
+
+		// Exclude/Include Kinds
+		add_rewrite_rule(
+			'exclude/kind/([a-zA-Z,]+)/?$',
+			'index.php?exclude_kind=$matches[1]',
+			'top'
+		);
+		add_rewrite_rule(
+			'exclude/kind/([a-zA-Z,]+)/feed/([a-z]+)?$',
+			'index.php?exclude_kind=$matches[1]&feed=$matches[2]',
+			'top'
+		);
+
+		// On This Day Archive
 		add_rewrite_rule(
 			'onthisday/([0-9]{2})/([0-9]{2})/?$',
 			'index.php?monthnum=$matches[1]&day=$matches[2]',
@@ -742,7 +797,7 @@ final class Kind_Taxonomy {
 				'verb'            => __( 'Ate', 'indieweb-post-kinds' ), // The string for the verb or action (liked this)
 				'property'        => 'ate', // microformats 2 property
 				'format'          => 'status', // Post Format that maps to this
-				'description'     => __( 'what you are eating, perhaps for a food dairy', 'indieweb-post-kinds' ),
+				'description'     => __( 'what you are eating, perhaps for a food diary', 'indieweb-post-kinds' ),
 				'description-url' => 'https://indieweb.org/food',
 				'title'           => false, // Should this kind have an explicit title
 				'show'            => true, // Show in Settings
@@ -1088,7 +1143,7 @@ final class Kind_Taxonomy {
 	 * @return bool True if the post has any of the given kinds (or any kind, if no kind specified), false otherwise.
 	 */
 	public static function has_post_kind( $kinds = array(), $post = null ) {
-		$prefixed = array();
+		$kind = array();
 		if ( $kinds ) {
 			foreach ( (array) $kinds as $single ) {
 				$kind[] = sanitize_key( $single );
@@ -1161,7 +1216,7 @@ final class Kind_Taxonomy {
 		$name = self::get_kind_info( $kind, 'singular_name' );
 		$svg  = sprintf( '%1$ssvgs/%2$s.svg', plugin_dir_path( __DIR__ ), $kind );
 		if ( file_exists( $svg ) ) {
-			$return = sprintf( '<span class="svg-icon svg-%1$s" aria-hidden="true" aria-label="%2$s" title="%2$s" >%3$s</span>', esc_attr( $kind ), esc_attr( $name ), file_get_contents( $svg ) );
+			$return = sprintf( '<span class="svg-icon svg-%1$s" style="display: inline-block; max-height: 1rem; margin-right: 0.5rem;" aria-hidden="true" aria-label="%2$s" title="%2$s" >%3$s</span>', esc_attr( $kind ), esc_attr( $name ), file_get_contents( $svg ) );
 		} else {
 			return '';
 		}

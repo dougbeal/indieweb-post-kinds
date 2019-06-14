@@ -1,7 +1,8 @@
 <?php
 wp_nonce_field( 'replykind_metabox', 'replykind_metabox_nonce' );
 $mf2_post = new MF2_Post( get_post() );
-$type     = Kind_Taxonomy::get_kind_info( $mf2_post->get( 'kind', true ), 'property' );
+$kind = $mf2_post->get( 'kind', true );
+$type     = Kind_Taxonomy::get_kind_info( $kind, 'property' );
 $cite     = $mf2_post->fetch( $type );
 $duration = divide_iso8601_duration( $mf2_post->get( 'duration' ) );
 
@@ -62,8 +63,9 @@ if ( isset( $cite['url'] ) && is_array( $cite['url'] ) ) {
 	<?php echo Kind_Metabox::rsvp_select( $mf2_post->get( 'rsvp', true ) ); ?>
 </p>
 <p id="kind-media hide-if-no-js">
-<div id="kind-media-container" <?php echo isset( $cite['url'] ) ? '' : 'class="hidden"'; ?> >
-	<img src="<?php echo ifset( $cite['url'], '' ); ?>" alt="" title="" height="100" />
+<?php $show_media = ( isset( $cite['url'] ) && in_array( $kind, array( 'photo' ) ) ); ?>
+<div id="kind-media-container" <?php echo ( $show_media ) ? '' : 'class="hidden"'; ?> >
+<img src="<?php echo ifset( $cite['url'], '' ); ?>" alt="" title="" height="100" />
 	</div>
 	<input type="hidden" value="" id="cite_media" name="cite_media">
 </p>

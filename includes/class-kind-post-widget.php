@@ -52,15 +52,11 @@ class Kind_Post_Widget extends WP_Widget {
 			return;
 		}
 		echo '<div id="kind-posts">';
-		if ( 1 === count( $posts ) ) {
-			printf( '<p>%1$s</p>', self::get_the_link( $post, $kind ) ); // phpcs:ignore
-		} else {
-			echo '<ul>';
-			foreach ( $posts as $post ) {
-				printf( '<li>%1$s</li>', self::get_the_link( $post, $kind ) ); // phpcs:ignore
-			}
-			echo '</ul>';
+		echo '<ul>';
+		foreach ( $posts as $post ) {
+			printf( '<li>%1$s</li>', self::get_the_link( $post, $kind ) ); // phpcs:ignore
 		}
+		echo '</ul>';
 		echo '</div>';
 		// phpcs:ignore
 		if ( isset( $args['after_widget'] ) ) {
@@ -69,7 +65,7 @@ class Kind_Post_Widget extends WP_Widget {
 	}
 
 	public function get_the_link( $post, $kind ) {
-		return sprintf( '<a href="%2$s">%1$s</a> - %3$s', self::get_the_title( $post, $kind ), get_the_permalink( $post ), get_the_date() );
+		return sprintf( '<a href="%2$s">%1$s</a> - %3$s', self::get_the_title( $post, $kind ), get_the_permalink( $post ), get_the_date( '', $post ) );
 	}
 
 
@@ -124,8 +120,8 @@ class Kind_Post_Widget extends WP_Widget {
 		$instance['kind'] = ifset( $instance['kind'], 'note' );
 		?>
 				<p><label for="title"><?php esc_html_e( 'Title: ', 'indieweb-post-kinds' ); ?></label>
-				<input type="text" size="30" name="<?php echo esc_attr( $this->get_field_name( 'title' ) ); ?> id="<?php echo esc_attr( $this->get_field_id( 'title' ) ); ?>" value="
-		<?php echo esc_html( ifset( $instance['title'] ) ); ?>" /></p>
+				<input type="text" size="30" name="<?php echo esc_attr( $this->get_field_name( 'title' ) ); ?> id="<?php echo esc_attr( $this->get_field_id( 'title' ) ); ?>"
+				value="<?php echo esc_html( ifset( $instance['title'] ) ); ?>" /></p>
 		<select name="<?php echo esc_attr( $this->get_field_name( 'kind' ) ); ?>" id="<?php echo esc_attr( $this->get_field_id( 'kind' ) ); ?>">
 		<?php
 		$list   = get_option( 'kind_termslist', Kind_Taxonomy::get_kind_list() );
