@@ -27,10 +27,56 @@ class Parse_This {
 	}
 
 	public function get( $key = 'jf2' ) {
+		if ( 'mf2' === $key ) {
+			return jf2_to_mf2( $this->jf2 );
+		}
 		if ( ! in_array( $key, get_object_vars( $this ), true ) ) {
 			$key = 'jf2';
 		}
 		return $this->$key;
+	}
+
+
+	public static function clean_content( $content ) {
+		if ( ! is_string( $content ) ) {
+			return $content;
+		}
+		$allowed = array(
+			'a'          => array(
+				'href' => array(),
+				'name' => array(),
+			),
+			'abbr'       => array(),
+			'b'          => array(),
+			'br'         => array(),
+			'code'       => array(),
+			'del'        => array(),
+			'em'         => array(),
+			'i'          => array(),
+			'q'          => array(),
+			'strike'     => array(),
+			'strong'     => array(),
+			'time'       => array(),
+			'blockquote' => array(),
+			'pre'        => array(),
+			'p'          => array(),
+			'h1'         => array(),
+			'h2'         => array(),
+			'h3'         => array(),
+			'h4'         => array(),
+			'h5'         => array(),
+			'h6'         => array(),
+			'ul'         => array(),
+			'li'         => array(),
+			'ol'         => array(),
+			'span'       => array(),
+			'img'        => array(
+				'src'   => array(),
+				'alt'   => array(),
+				'title' => array(),
+			),
+		);
+		return trim( wp_kses( $content, $allowed ) );
 	}
 
 	/**
@@ -52,15 +98,7 @@ class Parse_This {
 		if ( $jf2 ) {
 			$this->jf2 = $source_content;
 		} elseif ( is_string( $this->content ) ) {
-			if ( class_exists( 'Masterminds\\HTML5' ) ) {
-				$this->doc = new \Masterminds\HTML5( array( 'disable_html_ns' => true ) );
-				$this->doc = $this->doc->loadHTML( $this->content );
-			} else {
-				$this->doc = new DOMDocument();
-				libxml_use_internal_errors( true );
-				$this->doc->loadHTML( mb_convert_encoding( $this->content, 'HTML-ENTITIES', mb_detect_encoding( $this->content ) ) );
-				libxml_use_internal_errors( false );
-			}
+			$this->doc = pt_load_domdocument( $this->content );
 		}
 	}
 
@@ -172,9 +210,6 @@ class Parse_This {
 		}
 		// A feed was given
 		if ( $this->content instanceof SimplePie ) {
-			if ( ! class_exists( 'Parse_This_RSS', false ) ) {
-				require_once plugin_dir_path( __FILE__ ) . '/class-parse-this-rss.php';
-			}
 			return array(
 				'results' => array(
 					array(
@@ -326,9 +361,6 @@ class Parse_This {
 			return true;
 		}
 		if ( 'application/json' === $content_type ) {
-			if ( ! class_exists( 'Parse_This_JSONFeed', false ) ) {
-				require_once plugin_dir_path( __FILE__ ) . '/class-parse-this-jsonfeed.php';
-			}
 			$content = json_decode( $content, true );
 			if ( $content && isset( $content['version'] ) && 'https://jsonfeed.org/version/1' === $content['version'] ) {
 				$content = Parse_This_JSONFeed::to_jf2( $content, $url );
@@ -359,9 +391,6 @@ class Parse_This {
 			$this->jf2 = self::wp_post( $this->content );
 			return;
 		} elseif ( $this->content instanceof SimplePie ) {
-			if ( ! class_exists( 'Parse_This_RSS', false ) ) {
-				require_once plugin_dir_path( __FILE__ ) . '/class-parse-this-rss.php';
-			}
 			$this->jf2 = Parse_This_RSS::parse( $this->content, $this->url );
 			return;
 		} elseif ( $this->doc instanceof DOMDocument ) {
@@ -374,9 +403,6 @@ class Parse_This {
 		}
 		// Ensure not already preparsed
 		if ( empty( $this->jf2 ) ) {
-			if ( ! class_exists( 'Parse_This_MF2', false ) ) {
-				require_once plugin_dir_path( __FILE__ ) . '/class-parse-this-mf2.php';
-			}
 			$this->jf2 = Parse_This_MF2::parse( $content, $this->url, $args );
 		}
 		if ( ! isset( $this->jf2['url'] ) ) {
@@ -385,9 +411,6 @@ class Parse_This {
 		// If the HTML argument is not true return at this point
 		if ( ! $args['html'] ) {
 			return;
-		}
-		if ( ! class_exists( 'Parse_This_HTML', false ) ) {
-			require_once plugin_dir_path( __FILE__ ) . '/class-parse-this-html.php';
 		}
 		// If No MF2
 		if ( empty( $this->jf2 ) ) {
@@ -407,11 +430,8 @@ class Parse_This {
 	}
 
 	public static function wp_post( $post ) {
-		if ( ! class_exists( 'MF2_Post', false ) ) {
-			require_once plugin_dir_path( __FILE__ ) . '/class-mf2-post.php';
-		}
 		$mf2 = new MF2_Post( $post );
-		return $mf2->get( null, true );
+		return mf2_to_jf2( $mf2->get() );
 	}
 
 }

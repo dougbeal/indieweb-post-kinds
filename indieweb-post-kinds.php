@@ -7,7 +7,7 @@
  * Plugin Name: Post Kinds
  * Plugin URI: https://wordpress.org/plugins/indieweb-post-kinds/
  * Description: Ever want to reply to someone else's post with a post on your own site? Or to "like" someone else's post, but with your own site?
- * Version: 3.3.0
+ * Version: 3.3.1
  * Author: David Shanske
  * Author URI: https://david.shanske.com
  * Text Domain: indieweb-post-kinds
@@ -18,7 +18,25 @@ if ( ! defined( 'POST_KINDS_KSES' ) ) {
 	define( 'POST_KINDS_KSES', false );
 }
 
+spl_autoload_register(
+	function ( $class ) {
+		$base_dir = trailingslashit( __DIR__ ) . 'includes/';
+		$bases    = array( 'Kind', 'Post_Kind' );
 
+		foreach ( $bases as $base ) {
+			if ( strncmp( $class, $base, strlen( $base ) ) === 0 ) {
+				$filename = 'class-' . strtolower( str_replace( '_', '-', $class ) );
+				$file     = $base_dir . $filename . '.php';
+				if ( file_exists( $file ) ) {
+					require $file;
+				}
+			}
+		}
+	}
+);
+
+register_activation_hook( __FILE__, array( 'Kind_Taxonomy', 'activate_kinds' ) );
+register_deactivation_hook( __FILE__, array( 'Post_Kinds_Plugin', 'deactivate' ) );
 
 if ( ! file_exists( plugin_dir_path( __FILE__ ) . 'lib/parse-this/parse-this.php' ) ) {
 	add_action( 'admin_notices', array( 'Post_Kinds_Plugin', 'parse_this_error' ) );
@@ -28,15 +46,13 @@ if ( ! class_exists( 'Classic_Editor' ) ) {
 	add_action( 'admin_notices', array( 'Post_Kinds_Plugin', 'classic_editor_error' ) );
 }
 
-add_action( 'plugins_loaded', array( 'Post_Kinds_Plugin', 'plugins_loaded' ) );
+add_action( 'plugins_loaded', array( 'Post_Kinds_Plugin', 'plugins_loaded' ), 11 );
 add_action( 'init', array( 'Post_Kinds_Plugin', 'init' ) );
 
 class Post_Kinds_Plugin {
-	public static $version = '3.3.0';
+	public static $version = '3.3.1';
 	public static function init() {
 		// Add Kind Taxonomy.
-		require_once plugin_dir_path( __FILE__ ) . 'includes/class-post-kind.php';
-		require_once plugin_dir_path( __FILE__ ) . 'includes/class-kind-taxonomy.php';
 		Kind_Taxonomy::init();
 		Kind_Taxonomy::register();
 	}
@@ -53,11 +69,21 @@ class Post_Kinds_Plugin {
 		printf( '<div class="%1$s"><p>%2$s</p></div>', esc_attr( $class ), esc_html( $message ) );
 	}
 
+	public static function activate() {
+		Kind_Taxonomy::activate_kinds();
+		flush_rewrite_rules();
+	}
+
+	public static function deactivate() {
+		flush_rewrite_rules();
+	}
+
 	public static function plugins_loaded() {
 		$cls = get_called_class();
 		load_plugin_textdomain( 'indieweb-post-kinds', false, dirname( plugin_basename( __FILE__ ) ) . '/languages/' );
-		// On Activation, add terms.
-		register_activation_hook( __FILE__, array( 'Kind_Taxonomy', 'activate_kinds' ) );
+
+		// Add WordPress Compatibility File for Functions Introduced Post 4.9.9
+		require_once plugin_dir_path( __FILE__ ) . 'includes/compat.php';
 
 		// Add Kind Global Functions.
 		require_once plugin_dir_path( __FILE__ ) . '/includes/kind-functions.php';
@@ -66,36 +92,26 @@ class Post_Kinds_Plugin {
 		require_once plugin_dir_path( __FILE__ ) . '/includes/time-functions.php';
 
 		// Parse This
-		require_once plugin_dir_path( __FILE__ ) . 'lib/parse-this/parse-this.php';
+		require_once plugin_dir_path( __FILE__ ) . 'lib/parse-this/includes/autoload.php';
+		if ( ! class_exists( 'REST_Parse_This' ) ) {
+			require_once plugin_dir_path( __FILE__ ) . 'lib/parse-this/includes/class-rest-parse-this.php';
+		}
+		require_once plugin_dir_path( __FILE__ ) . 'lib/parse-this/includes/functions.php';
+		$class_load = array(
+			'Plugins', // Plugin Specific Customization
+			'Media_Metadata', // Media Metadata Enhancements
+			'Config', // Configuration Menu
+			'Metabox', // Metabox for Classic Editor
+			'View', // Kind Display Functionality
+		);
 
-		// Plugin Specific Kind Customizations
-		require_once plugin_dir_path( __FILE__ ) . '/includes/class-kind-plugins.php';
-		add_action( 'init', array( 'Kind_Plugins', 'init' ) );
-
-		// Enhance Media Metadata
-		require_once plugin_dir_path( __FILE__ ) . 'includes/class-media-metadata.php';
-		add_action( 'init', array( 'Media_Metadata', 'init' ) );
-
-		// Config Settings.
-		require_once plugin_dir_path( __FILE__ ) . 'includes/class-kind-config.php';
-		add_action( 'init', array( 'Kind_Config', 'init' ) );
+		foreach ( $class_load as $load ) {
+			add_action( 'init', array( 'Kind_' . $load, 'init' ) );
+		}
 
 		// Add a Settings Link to the Plugins Page.
 		$plugin = plugin_basename( __FILE__ );
 		add_filter( 'plugin_action_links_$plugin', array( 'Post_Kinds_Plugin', 'settings_link' ) );
-
-		// Add Kind Post UI Configuration
-		require_once plugin_dir_path( __FILE__ ) . 'includes/class-kind-metabox.php';
-		add_action( 'init', array( 'Kind_Metabox', 'init' ) );
-		Kind_Metabox::$version = self::$version;
-
-		// Add Kind Display Functions.
-		require_once plugin_dir_path( __FILE__ ) . 'includes/class-kind-view.php';
-		add_action( 'init', array( 'Kind_View', 'init' ) );
-
-		// Kind Widgets
-		require_once plugin_dir_path( __FILE__ ) . 'includes/class-kind-menu-widget.php';
-		require_once plugin_dir_path( __FILE__ ) . 'includes/class-kind-post-widget.php';
 
 		// Load stylesheets.
 		add_action( 'wp_enqueue_scripts', array( $cls, 'style_load' ) );
@@ -103,11 +119,19 @@ class Post_Kinds_Plugin {
 
 		// Load Privacy Declaration
 		add_action( 'admin_init', array( $cls, 'privacy_declaration' ) );
-
 		remove_all_actions( 'do_feed_rss2' );
 		remove_all_actions( 'do_feed_atom' );
 		add_action( 'do_feed_rss2', array( $cls, 'do_feed_rss2' ), 10, 1 );
 		add_action( 'do_feed_atom', array( $cls, 'do_feed_atom' ), 10, 1 );
+
+		// Register Widgets
+		add_action(
+			'widgets_init',
+			function() {
+				register_widget( 'Kind_Menu_Widget' );
+				register_widget( 'Kind_Post_Widget' );
+			}
+		);
 	}
 
 	public static function do_feed_atom( $for_comments ) {

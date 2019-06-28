@@ -307,45 +307,6 @@ if ( ! function_exists( 'post_type_discovery' ) ) {
 	}
 }
 
-function parse_this_clean_content( $content ) {
-	$allowed = array(
-		'a'          => array(
-			'href' => array(),
-			'name' => array(),
-		),
-		'abbr'       => array(),
-		'b'          => array(),
-		'br'         => array(),
-		'code'       => array(),
-		'del'        => array(),
-		'em'         => array(),
-		'i'          => array(),
-		'q'          => array(),
-		'strike'     => array(),
-		'strong'     => array(),
-		'time'       => array(),
-		'blockquote' => array(),
-		'pre'        => array(),
-		'p'          => array(),
-		'h1'         => array(),
-		'h2'         => array(),
-		'h3'         => array(),
-		'h4'         => array(),
-		'h5'         => array(),
-		'h6'         => array(),
-		'ul'         => array(),
-		'li'         => array(),
-		'ol'         => array(),
-		'span'       => array(),
-		'img'        => array(
-			'src'   => array(),
-			'alt'   => array(),
-			'title' => array(),
-		),
-	);
-	return trim( wp_kses( $content, $allowed ) );
-}
-
 if ( ! function_exists( 'seconds_to_iso8601' ) ) {
 	function seconds_to_iso8601( $second ) {
 		$h   = intval( $second / 3600 );
@@ -362,5 +323,29 @@ if ( ! function_exists( 'seconds_to_iso8601' ) ) {
 			$ret .= $s . 'S';
 		}
 		return $ret;
+	}
+}
+
+if ( ! function_exists( 'pt_load_domdocument' ) ) {
+	function pt_load_domdocument( $content ) {
+		if ( ! class_exists( '\Masterminds\HTML5', false ) ) {
+			$file = plugin_dir_path( __DIR__ ) . 'lib/html5/autoloader.php';
+			if ( file_exists( $file ) ) {
+				require_once $file;
+			}
+		}
+		if ( class_exists( 'Masterminds\\HTML5' ) ) {
+			$doc = new \Masterminds\HTML5( array( 'disable_html_ns' => true ) );
+			$doc = $doc->loadHTML( $content );
+		} else {
+			$doc = new DOMDocument();
+			libxml_use_internal_errors( true );
+			if ( function_exists( 'mb_convert_encoding' ) ) {
+				$content = mb_convert_encoding( $content, 'HTML-ENTITIES', mb_detect_encoding( $content ) );
+			}
+			$doc->loadHTML( $content );
+			libxml_use_internal_errors( false );
+		}
+		return $doc;
 	}
 }

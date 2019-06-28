@@ -43,18 +43,20 @@ class Kind_View {
 		}
 		$templates[] = "{$slug}-{$name}.php";
 		$templates[] = "{$slug}.php";
+		$look        = apply_filters( 'kind_view_paths', array( get_stylesheet_directory() . 'kind_views' ) );
+		$look[]      = plugin_dir_path( __DIR__ ) . 'views/';
+		$located = null;
 		foreach ( (array) $templates as $template_name ) {
 			if ( ! $template_name ) {
 					continue;
 			}
-			// If the Theme Has a kind_views directory look there first.
-			if ( file_exists( get_stylesheet_directory() . '/kind_views/' . $template_name ) ) {
-				$located = get_stylesheet_directory() . '/kind_views/' . $template_name;
-				break;
+			foreach ( $look as $l ) {
+				if ( file_exists( $l . $template_name ) ) {
+					$located = $l . $template_name;
+					break;
+				}
 			}
-			// Look in the views subdirectory.
-			if ( file_exists( plugin_dir_path( __DIR__ ) . 'views/' . $template_name ) ) {
-				$located = plugin_dir_path( __DIR__ ) . 'views/' . $template_name;
+			if ( $located ) {
 				break;
 			}
 		}
@@ -62,8 +64,18 @@ class Kind_View {
 		$kind     = $mf2_post->get( 'kind', true );
 		$type     = Kind_Taxonomy::get_kind_info( $kind, 'property' );
 		$cite     = $mf2_post->fetch( $type );
-		$url      = null;
-		$embed    = null;
+		if ( in_array( $type, array( 'video', 'audio', 'photo' ), true ) ) {
+			if ( is_array( $cite ) && array_key_exists( 'url', $cite ) ) {
+				$u = attachment_url_to_postid( $cite['url'] );
+				if ( $u ) {
+					$attachment = new MF2_Post( $u );
+					$attachment->set( $cite );
+					$mf2_post->set( array( $cite['url'] ) );
+				}
+			}
+		}
+		$url   = null;
+		$embed = null;
 		ob_start();
 		include $located;
 		$return = ob_get_contents();
