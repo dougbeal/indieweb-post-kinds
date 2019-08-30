@@ -8,6 +8,7 @@
 class MF2_Post implements ArrayAccess {
 	public $uid;
 	public $post_author;
+	public $post_type;
 	public $author;
 	public $publication;
 	public $published;
@@ -42,30 +43,56 @@ class MF2_Post implements ArrayAccess {
 		if ( ! $post ) {
 			return false;
 		}
+		$this->mf2         = $this->get_mf2meta();
 		$this->post_author = $post->post_author;
-		$this->author      = self::get_author();
+		$this->post_type   = $post->post_type;
+		$this->author      = $this->get_author();
 		$this->post_parent = $post->post_parent;
-		$this->published   = get_the_date( DATE_W3C, $post );
-		$this->updated     = get_the_modified_date( DATE_W3C, $post );
-		$this->publication = get_bloginfo( 'title' );
+		$this->published   = $this->get_published();
+		$this->updated     = $this->get_updated();
+		$this->publication = $this->get_publication();
 		if ( ! empty( $post->post_content ) ) {
 			$this->content = array(
 				'html'  => $post->post_content,
 				'value' => wp_strip_all_tags( $post->post_content ),
 			);
 		}
-		$this->summary  = $post->post_excerpt;
-		$this->mf2      = $this->get_mf2meta();
-		$this->url      = get_permalink( $post->ID );
+		$this->summary = $post->post_excerpt;
+		if ( 'attachment' === $post->post_type ) {
+			$this->url = wp_get_attachment_url( $post->ID );
+		} else {
+			$this->url = get_permalink( $post->ID );
+		}
 		$this->name     = $post->post_title;
 		$this->category = $this->get_categories( $post->ID );
 		if ( $this->uid === (int) $this->name ) {
 			unset( $this->name );
 		}
 		if ( has_post_thumbnail( $post ) ) {
-			$this->featured = wp_get_attachment_url( get_post_thumbnail_id( $post ), 'full' );
+			$this->featured = wp_get_attachment_url( get_post_thumbnail_id( $post ) );
 		}
 		$this->kind = self::get_post_kind();
+	}
+
+	public function get_published() {
+		if ( 'attachment' === $this->post_type ) {
+			return ifset( $this->meta['published'] );
+		}
+		return get_the_date( DATE_W3C, $this->uid );
+	}
+
+	public function get_updated() {
+		if ( 'attachment' === $this->post_type ) {
+			return ifset( $this->meta['updated'] );
+		}
+		return get_the_modified_date( DATE_W3C, $this->uid );
+	}
+
+	public function get_publication() {
+		if ( 'attachment' !== $this->post_type ) {
+			return get_bloginfo( 'title' );
+		}
+		return ifset( $this->meta['publication'] );
 	}
 
 	public function offsetExists( $offset ) {
@@ -201,8 +228,8 @@ class MF2_Post implements ArrayAccess {
 			return ifset( $this->meta['author'], false );
 		}
 		// Attachments may have been uploaded by a user but may have metadata for original author
-		if ( is_attachment( $this->uid ) && isset( $this->meta['author'] ) ) {
-			return $this->meta['author'];
+		if ( 'attachment' === $this->post_type ) {
+			return ifset( $this->meta['author'] );
 		}
 		return array(
 			'type'       => array( 'h-card' ),
@@ -282,6 +309,19 @@ class MF2_Post implements ArrayAccess {
 	}
 
 	/**
+	 * Map Properties Based on Post Type
+	 *
+	 */
+	private function get_post_type_properties() {
+		$properties = array_keys( get_object_vars( $this ) );
+		unset( $properties['mf2'] );
+		if ( 'attachment' === $this->post_type ) {
+			$properties = array_diff( $properties, array( 'published', 'updated', 'author' ) );
+		}
+		return $properties;
+	}
+
+	/**
 	 * Retrieve value
 	 *
 	 * @param  string $key The key to retrieve.
@@ -289,9 +329,6 @@ class MF2_Post implements ArrayAccess {
 	 * @return boolean|string|array The result or false if does not exist.
 	 */
 	public function get( $key = null, $single = true ) {
-		if ( 'mf2' === $key ) {
-			return $this->mf2;
-		}
 		if ( null === $key ) {
 			$vars = get_object_vars( $this );
 			unset( $vars['mf2'] );
@@ -316,8 +353,7 @@ class MF2_Post implements ArrayAccess {
 			}
 			return $return;
 		}
-		$properties = array_keys( get_object_vars( $this ) );
-		unset( $properties['mf2'] );
+		$properties = $this->get_post_type_properties();
 		if ( in_array( $key, $properties, true ) ) {
 			$return = $this->$key;
 		} else {
@@ -362,22 +398,57 @@ class MF2_Post implements ArrayAccess {
 		if ( ! $key ) {
 			return;
 		}
+		if ( Parse_This_MF2::is_microformat( $key ) ) {
+			$key = $key['properties'];
+		}
 		if ( is_array( $key ) ) {
 			foreach ( $key as $k => $v ) {
 				self::set( $k, $v );
 			}
 		}
 		if ( null === $value || empty( $value ) ) {
-			return;
+			return false;
 		}
-		$properties = array_keys( get_object_vars( $this ) );
+		if ( in_array( $key, array( 'photo', 'video', 'audio' ), true ) ) {
+			if ( 'attachment' === $this->post_type ) {
+				return;
+			}
+			if ( Parse_This_MF2::is_microformat( $value ) ) {
+				$u          = Parse_This_MF2::get_plaintext( $value, 'url', null );
+				$attachment = new MF2_Post( attachment_url_to_postid( $u ) );
+				$attachment->set( $value );
+				return update_post_meta( $this->uid, 'mf2_' . $key, array( $u ) );
+			}
+			if ( wp_is_numeric_array( $value ) ) {
+				if ( is_string( $value[0] ) ) {
+					return update_post_meta( $this->uid, 'mf2_' . $key, $value );
+				} else {
+					$mprop = array();
+					foreach ( $value as $media ) {
+						if ( Parse_This_MF2::is_microformat( $media ) ) {
+							$u          = Parse_This_MF2::get_plaintext( $media, 'url', null );
+							$attachment = new MF2_Post( attachment_url_to_postid( $u ) );
+							$attachment->set( $media );
+							$mprop[] = $u;
+						}
+					}
+					if ( ! empty( $mprop ) ) {
+						return update_post_meta( $this->uid, 'mf2_' . $key, $mprop );
+					}
+				}
+			}
+		}
+		$properties = $this->get_post_type_properties();
 		unset( $properties['mf2'] );
 		if ( ! in_array( $key, $properties, true ) ) {
-			update_post_meta( $this->uid, 'mf2_' . $key, $value );
+			return update_post_meta( $this->uid, 'mf2_' . $key, $value );
 		} else {
+			$value = $this->get_single( $value );
 			switch ( $key ) {
 				case 'url':
 				case 'uid':
+				case 'kind':
+				case 'post_type':
 					break;
 				case 'post_author':
 					if ( is_numeric( $value ) ) {
@@ -402,14 +473,13 @@ class MF2_Post implements ArrayAccess {
 					$post_date = $date->format( 'Y-m-d H:i:s' );
 					$date->setTimeZone( new DateTimeZone( 'GMT' ) );
 					$post_date_gmt = $date->format( 'Y-m-d H:i:s' );
-					wp_update_post(
+					return wp_update_post(
 						array(
 							'ID'            => $this->uid,
 							'post_date'     => $post_date,
 							'post_date_gmt' => $post_date_gmt,
 						)
 					);
-					break;
 				case 'updated':
 					$date      = new DateTime( $value );
 					$tz_string = get_option( 'timezone_string' );
@@ -421,34 +491,47 @@ class MF2_Post implements ArrayAccess {
 					$post_modified = $date->format( 'Y-m-d H:i:s' );
 					$date->setTimeZone( new DateTimeZone( 'GMT' ) );
 					$post_modified_gmt = $date->format( 'Y-m-d H:i:s' );
-					wp_update_post(
+					return wp_update_post(
 						array(
 							'ID'                => $this->uid,
 							'post_modified'     => $post_modified,
 							'post_modified_gmt' => $post_modified_gmt,
 						)
 					);
-					break;
+				case 'name':
+					return wp_update_post(
+						array(
+							'ID'         => $this->uid,
+							'post_title' => $value,
+						)
+					);
 				case 'content':
-					$key = 'post_content';
-					wp_update_post(
+					return wp_update_post(
 						array(
-							'ID' => $this->uid,
-							$key => $value,
+							'ID'           => $this->uid,
+							'post_content' => $value,
 						)
 					);
-					break;
 				case 'summary':
-					$key = 'post_excerpt';
-					wp_update_post(
+					return wp_update_post(
 						array(
-							'ID' => $this->uid,
-							$key => $value,
+							'ID'           => $this->uid,
+							'post_excerpt' => $value,
 						)
 					);
-					break;
+				case 'publication':
+					if ( get_bloginfo( 'title' ) === $value ) {
+						return false;
+					}
+					return update_post_meta( $this->uid, 'mf2_publication', array( $value ) );
+				case 'featured':
+					$attachment_id = attachment_url_to_postid( $value );
+					if ( $attachment_id ) {
+						return set_post_thumbnail( $this->uid, $attachment_id );
+					}
+					return false;
 				default:
-					wp_update_post(
+					return wp_update_post(
 						array(
 							'ID' => $this->uid,
 							$key => $value,
@@ -459,7 +542,7 @@ class MF2_Post implements ArrayAccess {
 	}
 
 	public function delete( $key ) {
-		delete_post_meta( $this->uid, 'mf2_' . $key );
+		return delete_post_meta( $this->uid, 'mf2_' . $key );
 	}
 
 	public function mf2_to_jf2( $cite ) {
@@ -526,7 +609,7 @@ class MF2_Post implements ArrayAccess {
 		$audios  = $this->get( 'audio' );
 		$att_ids = array_merge( $att_ids, $this->get_attachments_from_urls( $audios ) );
 		if ( ! empty( $att_ids ) ) {
-			return $att_ids;
+			return array_unique( $att_ids );
 		}
 		return false;
 	}
@@ -538,9 +621,9 @@ class MF2_Post implements ArrayAccess {
 		}
 		$att_ids = $this->get_attached_media( 'video', $this->uid );
 		$videos  = $this->get( 'video' );
-		$att_ids = array_unique( array_merge( $att_ids, $this->get_attachments_from_urls( $videos ) ) );
+		$att_ids = array_merge( $att_ids, $this->get_attachments_from_urls( $videos ) );
 		if ( ! empty( $att_ids ) ) {
-			return $att_ids;
+			return array_unique( $att_ids );
 		}
 		return false;
 	}
@@ -560,7 +643,7 @@ class MF2_Post implements ArrayAccess {
 			$urls    = self::get_img_urls_from_content( $post_content );
 			$att_ids = self::get_attachments_from_urls( $urls );
 			if ( ! empty( $att_ids ) ) {
-				return $content_allow ? $att_ids : array();
+				return $content_allow ? array_unique( $att_ids ) : array();
 			}
 		}
 		// If there is a featured image return only that. Otherwise return all images
@@ -633,9 +716,8 @@ class MF2_Post implements ArrayAccess {
 	public function get_img_ids_from_content( $content ) {
 		$content = wp_unslash( $content );
 		$return  = array();
-		$doc     = new DOMDocument();
-		$doc->loadHTML( $content );
-		$images = $doc->getElementsByTagName( 'img' );
+		$doc     = pt_load_domdocument( $content );
+		$images  = $doc->getElementsByTagName( 'img' );
 		foreach ( $images as $image ) {
 			$classes = $image->getAttribute( 'class' );
 			$classes = explode( ' ', $classes );
@@ -667,7 +749,12 @@ class MF2_Post implements ArrayAccess {
 
 	public function get_attachments_from_urls( $urls ) {
 		if ( is_string( $urls ) ) {
-			$urls = array( $urls );
+			$attachment = attachment_url_to_postid( $urls );
+			if ( $attachment ) {
+				return array( $attachment );
+			} else {
+				return array();
+			}
 		}
 		$att_ids = array();
 		if ( wp_is_numeric_array( $urls ) ) {

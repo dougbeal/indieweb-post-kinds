@@ -43,18 +43,20 @@ class Kind_View {
 		}
 		$templates[] = "{$slug}-{$name}.php";
 		$templates[] = "{$slug}.php";
+		$look        = apply_filters( 'kind_view_paths', array( get_stylesheet_directory() . 'kind_views' ) );
+		$look[]      = plugin_dir_path( __DIR__ ) . 'views/';
+		$located     = null;
 		foreach ( (array) $templates as $template_name ) {
 			if ( ! $template_name ) {
 					continue;
 			}
-			// If the Theme Has a kind_views directory look there first.
-			if ( file_exists( get_stylesheet_directory() . '/kind_views/' . $template_name ) ) {
-				$located = get_stylesheet_directory() . '/kind_views/' . $template_name;
-				break;
+			foreach ( $look as $l ) {
+				if ( file_exists( $l . $template_name ) ) {
+					$located = $l . $template_name;
+					break;
+				}
 			}
-			// Look in the views subdirectory.
-			if ( file_exists( plugin_dir_path( __DIR__ ) . 'views/' . $template_name ) ) {
-				$located = plugin_dir_path( __DIR__ ) . 'views/' . $template_name;
+			if ( $located ) {
 				break;
 			}
 		}
@@ -62,8 +64,18 @@ class Kind_View {
 		$kind     = $mf2_post->get( 'kind', true );
 		$type     = Kind_Taxonomy::get_kind_info( $kind, 'property' );
 		$cite     = $mf2_post->fetch( $type );
-		$url      = null;
-		$embed    = null;
+		if ( in_array( $type, array( 'video', 'audio', 'photo' ), true ) ) {
+			if ( is_array( $cite ) && array_key_exists( 'url', $cite ) ) {
+				$u = attachment_url_to_postid( $cite['url'] );
+				if ( $u ) {
+					$attachment = new MF2_Post( $u );
+					$attachment->set( $cite );
+					$mf2_post->set( array( $cite['url'] ) );
+				}
+			}
+		}
+		$url   = null;
+		$embed = null;
 		ob_start();
 		include $located;
 		$return = ob_get_contents();
@@ -388,15 +400,15 @@ class Kind_View {
 		}
 		$rsvp = array(
 			/* translators: URL for link to event and name of event */
-			'yes'        => __( 'Attending <a href="%1$1s" class="u-in-reply-to">%2$2s</a>', 'indieweb-post-kinds' ),
+			'yes'        => __( 'Attending <a href="%1$s" class="u-in-reply-to">%2$s</a>', 'indieweb-post-kinds' ),
 			/* translators: URL for link to event and name of event */
-			'maybe'      => __( 'Might be attending <a href="%1$1s" class="u-in-reply-to">%2$2s</a>', 'indieweb-post-kinds' ),
+			'maybe'      => __( 'Might be attending <a href="%1$s" class="u-in-reply-to">%2$s</a>', 'indieweb-post-kinds' ),
 			/* translators: URL for link to event and name of event */
-			'no'         => __( 'Unable to Attend <a href="%1$1s" class="u-in-reply-to">%2$2s</a>', 'indieweb-post-kinds' ),
+			'no'         => __( 'Unable to Attend <a href="%1$s" class="u-in-reply-to">%2$s</a>', 'indieweb-post-kinds' ),
 			/* translators: URL for link to event and name of event */
-			'interested' => __( 'Interested in Attending %s', 'indieweb-post-kinds' ),
+			'interested' => __( 'Interested in Attending <a href="%1$s" class=u-in-reply-to">%2$s</a>', 'indieweb-post-kinds' ),
 			/* translators: URL for link to event and name of event */
-			'remote'     => __( 'Attending %s remotely', 'indieweb-post-kinds' ),
+			'remote'     => __( 'Attending <a href="%1s" class="u-in-reply-to">%2$s</a>  remotely', 'indieweb-post-kinds' ),
 		);
 		return $rsvp[ $type ];
 	}

@@ -21,7 +21,8 @@ if ( is_array( $cite ) && ! $videos ) {
 	$url   = ifset( $cite['url'] );
 	$embed = self::get_embed( $url );
 	if ( ! $embed ) {
-		$embed = kind_video_gallery( $url );
+		$view = new Kind_Media_View( $url, 'video' );
+		$embed = $view->get();
 	}
 }
 
@@ -44,7 +45,8 @@ if ( $embed ) {
 } elseif ( $videos ) {
 
 	$poster = wp_get_attachment_image_url( $first_photo, 'full' );
-	echo kind_video_gallery( $videos, array( 'poster' => $poster ) );
+	$view = new Kind_Media_View( $videos, 'video' );
+	echo $view->get();
 }
 ?>
 <?php

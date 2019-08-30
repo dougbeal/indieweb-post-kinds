@@ -42,6 +42,12 @@ class Parse_This_RSS {
 		}
 	}
 
+	public static function validate_email( $email ) {
+		$regexp = '/([a-z0-9_\.\-])+(\@|\[at\])+(([a-z0-9\-])+\.)+([a-z0-9]{2,4})+/i';
+		preg_match( $regexp, $email, $match );
+		return is_array( $match ) ? array_shift( $match ) : '';
+	}
+
 	/*
 	 * Takes a SimplePie_Author object and Turns it into a JF2 Author property
 	 * @param SimplePie_Author $author
@@ -56,14 +62,13 @@ class Parse_This_RSS {
 		}
 		$return = array();
 		foreach ( $author as $a ) {
-			$r   = array(
+			$r     = array(
 				'type'  => 'card',
 				'name'  => htmlspecialchars_decode( $a->get_name() ),
 				'url'   => $a->get_link(),
-				'email' => $a->get_email(),
+				'email' => self::validate_email( $a->get_email() ),
 			);
-			$dom = new DOMDocument();
-			$dom->loadHTML( $r['name'] );
+			$dom   = pt_load_domdocument( $r['name'] );
 			$links = $dom->getElementsByTagName( 'a' );
 			$names = array();
 			foreach ( $links as $link ) {
@@ -114,12 +119,14 @@ class Parse_This_RSS {
 				'name'    => $source->get_title(),
 				'summary' => $source->get_description(),
 				'url'     => $source->get_permalink(),
+				'author'  => self::get_authors( $source->get_authors() ),
+				'photo'   => $sourece->get_image_url(),
 			)
 		);
 	}
 
 
-	public function get_source( $item ) {
+	public static function get_source( $item ) {
 		$return = $item->get_item_tags( SIMPLEPIE_NAMESPACE_RSS_20, 'source' );
 		if ( $return ) {
 			return array(
@@ -130,7 +137,7 @@ class Parse_This_RSS {
 		return self::source_to_cite( $item->get_source() );
 	}
 
-	public function get_thumbnail( $item ) {
+	public static function get_thumbnail( $item ) {
 		if ( method_exists( $item, 'get_thumbnail' ) ) {
 			$return = $item->get_thumbnail();
 			if ( is_string( $return ) ) {
@@ -158,7 +165,7 @@ class Parse_This_RSS {
 			'summary'      => wp_strip_all_tags( $item->get_description( true ) ),
 			'content'      => array_filter(
 				array(
-					'html' => parse_this_clean_content( $item->get_content( true ) ),
+					'html' => Parse_This::clean_content( $item->get_content( true ) ),
 					'text' => wp_strip_all_tags( htmlspecialchars_decode( $item->get_content( true ) ) ),
 				)
 			),
@@ -205,7 +212,11 @@ class Parse_This_RSS {
 				$return[ $medium ] = $enclosure->get_link();
 			}
 			if ( isset( $return['category'] ) && is_array( $return['category'] ) ) {
-				$return['category'] = array_merge( $return['category'], $enclosure->get_keywords() );
+				$keywords = $enclosure->get_keywords();
+				if ( ! $keywords ) {
+					$keywords = array();
+				}
+				$return['category'] = array_merge( $return['category'], $keywords );
 			} else {
 				$return['category'] = $enclosure->get_keywords();
 			}
@@ -216,6 +227,9 @@ class Parse_This_RSS {
 				}
 			}
 			$credits = $enclosure->get_credits();
+			if ( ! $credits ) {
+				$credits = array();
+			}
 			foreach ( $credits as $credit ) {
 				if ( ! isset( $return['credits'] ) ) {
 					$return['credits'] = array();
@@ -245,7 +259,9 @@ class Parse_This_RSS {
 		}
 		$return['post_type'] = post_type_discovery( $return );
 		foreach ( array( 'category', 'video', 'audio' ) as $prop ) {
-			$return[ $prop ] = array_unique( $return[ $prop ] );
+			if ( array_key_exists( $prop, $return ) && is_array( $return[ $prop ] ) ) {
+				$return[ $prop ] = array_unique( $return[ $prop ] );
+			}
 		}
 		return array_filter( $return );
 	}

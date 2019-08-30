@@ -8,6 +8,7 @@
 class Kind_Metabox {
 	public static $version;
 	public static function init() {
+		self::$version = Post_Kinds_Plugin::$version;
 		add_action( 'edit_form_after_title', array( 'Kind_Metabox', 'after_title_metabox' ) );
 		// Add meta box to new post/post pages only
 		add_action( 'load-post.php', array( 'Kind_Metabox', 'kindbox_setup' ) );
@@ -62,9 +63,10 @@ class Kind_Metabox {
 
 	/* Meta box setup function. */
 	public static function kindbox_setup() {
+		$cls = get_called_class();
 		/* Add meta boxes on the 'add_meta_boxes' hook. */
-		add_action( 'add_meta_boxes', array( 'Kind_Metabox', 'add_meta_boxes' ) );
-		add_action( 'admin_enqueue_scripts', array( 'Kind_Metabox', 'enqueue_admin_scripts' ) );
+		add_action( 'add_meta_boxes', array( $cls, 'add_meta_boxes' ) );
+		add_action( 'admin_enqueue_scripts', array( $cls, 'enqueue_admin_scripts' ) );
 
 	}
 
@@ -340,12 +342,10 @@ class Kind_Metabox {
 		} else {
 			$fetch = array_filter( $fetch );
 		}
-		if ( ! empty( $_POST['cite_media'] ) ) {
-			$mf2_post->set( $type, array( $cite['url'] ) );
-			return;
+		if ( empty( $_POST['cite_media'] ) ) {
+			$cite = array_merge( $fetch, $cite );
+			$cite = array_filter( $cite );
 		}
-		$cite = array_merge( $fetch, $cite );
-		$cite = array_filter( $cite );
 
 		if ( ! empty( $cite ) ) {
 			if ( 1 === count( $cite ) && array_key_exists( 'url', $cite ) ) {
